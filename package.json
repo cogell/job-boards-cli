@@ -1,0 +1,43 @@
+{
+  "name": "job-boards-cli",
+  "version": "1.0.0",
+  "description": "Search mission-driven job boards (Idealist, Tech Jobs for Good) for tech roles",
+  "type": "module",
+  "bin": {
+    "job-boards-cli": "./dist/search.js"
+  },
+  "files": [
+    "dist",
+    "skills"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "search": "tsx src/search.ts"
+  },
+  "keywords": [
+    "job-search",
+    "cli",
+    "idealist",
+    "techjobsforgood",
+    "nonprofit",
+    "social-impact",
+    "remote-jobs"
+  ],
+  "author": "Cedric Cogell",
+  "license": "ISC",
+  "packageManager": "pnpm@10.31.0",
+  "dependencies": {
+    "fast-xml-parser": "^5.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.5",
+    "tsup": "^8.5.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}

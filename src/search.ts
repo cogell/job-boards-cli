@@ -1,6 +1,8 @@
-import { boards, allBoardNames } from "./boards/index.js";
+import { join } from "node:path";
+import { boards as builtInBoards } from "./boards/index.js";
 import { fetchSitemap, fetchJobDetails } from "./scraper.js";
 import { displayResults } from "./display.js";
+import { loadConfig, resolveBoards, generateInitConfig, showDefaults, showResolvedConfig } from "./config.js";
 import type { ScoredJob } from "./types.js";
 
 // --- CLI Args ---
@@ -18,49 +20,77 @@ function parseArgs() {
     }
   }
 
-  // --board idealist,techjobsforgood  or  --board all  (default: all)
-  const boardArg = flags.board || "all";
-  const selectedBoards = boardArg === "all"
-    ? allBoardNames
-    : boardArg.split(",").map((b) => b.trim());
-
-  // Validate board names
-  for (const name of selectedBoards) {
-    if (!boards[name]) {
-      console.error(`Unknown board: "${name}". Available: ${allBoardNames.join(", ")}`);
-      process.exit(1);
-    }
-  }
-
   return {
-    boards: selectedBoards,
+    boardArg: flags.board || "all",
     days: parseInt(flags.days || "7", 10),
     remote: flags.remote !== "false",
     limit: parseInt(flags.limit || "50", 10),
     minScore: parseInt(flags["min-score"] || "30", 10),
     verbose: flags.verbose === "true",
+    configPath: flags.config,
+    init: flags.init === "true",
+    showConfig: flags["show-config"] === "true",
+    showDefaults: flags["show-defaults"] === "true",
   };
 }
 
 // --- Main ---
 
 async function main() {
-  const config = parseArgs();
+  const args = parseArgs();
+
+  // --init: generate starter config file and exit
+  if (args.init) {
+    generateInitConfig(join(process.cwd(), "job-boards-cli.yml"));
+    return;
+  }
+
+  // Load config
+  const config = loadConfig(args.configPath);
+
+  // --show-defaults: print built-in defaults and exit
+  if (args.showDefaults) {
+    showDefaults();
+    return;
+  }
+
+  // --show-config: print resolved config and exit
+  if (args.showConfig) {
+    showResolvedConfig(config);
+    return;
+  }
+
+  // Resolve boards (built-in + config overrides)
+  const resolvedBoardMap = resolveBoards(builtInBoards, config);
+  const allBoardNames = Object.keys(resolvedBoardMap);
+
+  // Select boards from --board flag
+  const selectedBoards = args.boardArg === "all"
+    ? allBoardNames
+    : args.boardArg.split(",").map((b) => b.trim());
+
+  for (const name of selectedBoards) {
+    if (!resolvedBoardMap[name]) {
+      console.error(`Unknown board: "${name}". Available: ${allBoardNames.join(", ")}`);
+      process.exit(1);
+    }
+  }
 
   console.log(`\n  Job Boards CLI`);
   console.log(`  ---------------`);
-  console.log(`  Boards: ${config.boards.join(", ")}`);
-  console.log(`  Days back: ${config.days}`);
-  console.log(`  Remote only: ${config.remote}`);
-  console.log(`  Min score: ${config.minScore}`);
-  console.log(`  Max results: ${config.limit}\n`);
+  if (config.configPath) console.log(`  Config: ${config.configPath}`);
+  console.log(`  Boards: ${selectedBoards.join(", ")}`);
+  console.log(`  Days back: ${args.days}`);
+  console.log(`  Remote only: ${args.remote}`);
+  console.log(`  Min score: ${args.minScore}`);
+  console.log(`  Max results: ${args.limit}\n`);
 
   const allJobs: ScoredJob[] = [];
 
-  for (const boardName of config.boards) {
-    const board = boards[boardName];
-    const entries = await fetchSitemap(board, config.days);
-    const jobs = await fetchJobDetails(board, entries, config.remote, config.limit, config.minScore, config.verbose);
+  for (const boardName of selectedBoards) {
+    const board = resolvedBoardMap[boardName];
+    const entries = await fetchSitemap(board, args.days);
+    const jobs = await fetchJobDetails(board, entries, args.remote, args.limit, args.minScore, args.verbose, config);
     allJobs.push(...jobs);
   }
 
@@ -83,9 +113,9 @@ async function main() {
   deduped.sort((a, b) => b.score - a.score || b.datePosted.localeCompare(a.datePosted));
 
   // Apply final limit across all boards
-  const limited = deduped.slice(0, config.limit);
+  const limited = deduped.slice(0, args.limit);
 
-  displayResults(limited, config.verbose);
+  displayResults(limited, args.verbose);
 }
 
 main().catch((err) => {

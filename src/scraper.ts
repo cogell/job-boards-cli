@@ -1,5 +1,6 @@
 import { XMLParser } from "fast-xml-parser";
 import type { BoardConfig, SitemapEntry, JobFields, ScoredJob } from "./types.js";
+import type { ResolvedConfig } from "./config.js";
 import { scoreJob, isRemote } from "./scoring.js";
 
 const CONCURRENCY = 5;
@@ -113,6 +114,7 @@ export async function fetchJobDetails(
   limit: number,
   minScore: number,
   verbose: boolean,
+  config: ResolvedConfig,
 ): Promise<ScoredJob[]> {
   const results: ScoredJob[] = [];
   let fetched = 0;
@@ -140,7 +142,7 @@ export async function fetchJobDetails(
         if (!jsonLd) return null;
 
         const fields = parseJobFields(jsonLd, entry.url);
-        const { score, breakdown } = scoreJob(fields);
+        const { score, breakdown } = scoreJob(fields, config);
 
         if (score < 0) {
           excluded++;
@@ -154,7 +156,7 @@ export async function fetchJobDetails(
           return null;
         }
 
-        if (remoteOnly && !isRemote(fields)) {
+        if (remoteOnly && !isRemote(fields, config)) {
           skippedRemote++;
           return null;
         }

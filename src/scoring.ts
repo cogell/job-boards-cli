@@ -68,3 +68,34 @@ export function isRemote(
   const text = `${job.locationType} ${job.title}`.toLowerCase();
   return config.remote.terms.some((term) => text.includes(term));
 }
+
+/**
+ * Check if a job passes the location filter.
+ * When config.location is set, jobs must match at least one criterion:
+ *   - allowRemote + job is remote
+ *   - allowUnlisted + job has no specified location
+ *   - job location matches any include term
+ * When config.location is null, falls back to the legacy --remote flag.
+ */
+export function passesLocationFilter(
+  job: { location: string; locationType: string; title: string; description: string },
+  remoteOnly: boolean,
+  config: ResolvedConfig,
+): boolean {
+  // No location config — legacy --remote behavior
+  if (!config.location) {
+    return remoteOnly ? isRemote(job, config) : true;
+  }
+
+  const loc = config.location;
+
+  if (loc.allowRemote && isRemote(job, config)) return true;
+
+  const locationLower = job.location.toLowerCase();
+
+  if (loc.allowUnlisted && locationLower === "not specified") return true;
+
+  if (loc.include.some((term) => locationLower.includes(term))) return true;
+
+  return false;
+}

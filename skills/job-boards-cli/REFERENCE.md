@@ -79,6 +79,17 @@ remote:
   terms:
     - "remote"
     - "telecommute"
+
+# Location filter — replaces --remote flag when set.
+# Jobs must match at least one criterion to be included.
+location:
+  allowRemote: true        # Include remote jobs (detected via remote.terms)
+  allowUnlisted: true      # Include jobs with no specified location
+  include:                 # Include jobs whose location contains any of these (case-insensitive)
+    - "New York"
+    - "NYC"
+    - "Brooklyn"
+    - "San Francisco"
 ```
 
 ### `extends: defaults` vs replace mode
@@ -110,7 +121,7 @@ Run `--show-defaults` to see the full built-in keyword lists.
 3. Pre-filters by URL slug hints (configurable per board)
 4. Fetches each job page and extracts `<script type="application/ld+json">` (schema.org/JobPosting)
 5. Scores each job using the configurable keyword system
-6. Filters by score threshold, salary floor, and remote status
+6. Filters by score threshold, salary floor, and location (remote/geography)
 7. Deduplicates across boards by title+org (keeps highest score)
 8. Displays sorted results
 

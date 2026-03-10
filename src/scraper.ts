@@ -1,7 +1,7 @@
 import { XMLParser } from "fast-xml-parser";
 import type { BoardConfig, SitemapEntry, JobFields, ScoredJob } from "./types.js";
 import type { ResolvedConfig } from "./config.js";
-import { scoreJob, isRemote } from "./scoring.js";
+import { scoreJob, passesLocationFilter } from "./scoring.js";
 
 const CONCURRENCY = 5;
 const REQUEST_DELAY_MS = 250;
@@ -177,7 +177,7 @@ export async function fetchJobDetails(
           return null;
         }
 
-        if (remoteOnly && !isRemote(fields, config)) {
+        if (!passesLocationFilter(fields, remoteOnly, config)) {
           skippedRemote++;
           return null;
         }
@@ -196,7 +196,7 @@ export async function fetchJobDetails(
 
     const pct = Math.round((fetched / preFiltered.length) * 100);
     process.stdout.write(
-      `\r  [${board.name}] Fetched: ${fetched}/${preFiltered.length} (${pct}%) | Matches: ${results.length} | Excluded: ${excluded} | Low: ${belowThreshold}${minSalary > 0 ? ` | Salary: ${belowSalary}` : ""} | No-remote: ${skippedRemote} | Err: ${errors}`,
+      `\r  [${board.name}] Fetched: ${fetched}/${preFiltered.length} (${pct}%) | Matches: ${results.length} | Excluded: ${excluded} | Low: ${belowThreshold}${minSalary > 0 ? ` | Salary: ${belowSalary}` : ""} | Location: ${skippedRemote} | Err: ${errors}`,
     );
 
     if (i + CONCURRENCY < preFiltered.length) await sleep(REQUEST_DELAY_MS);

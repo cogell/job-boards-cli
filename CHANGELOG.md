@@ -1,6 +1,18 @@
 # Changelog
 
-## [Unreleased]
+## [1.2.0]
+
+### Added
+- Location filter via `location` config section with fine-grained control over which job locations to include
+  - `allowRemote`: include remote jobs (detected via `remote.terms`)
+  - `allowUnlisted`: include jobs with no specified location
+  - `include`: list of location terms to match (case-insensitive substring)
+- When `location` config is present, it replaces the `--remote` flag; when absent, `--remote` works as before
+
+### Changed
+- Progress line label renamed from "No-remote" to "Location"
+
+## [1.1.2]
 
 ### Added
 - Salary floor filtering via `minSalary` config option and `--min-salary` CLI flag

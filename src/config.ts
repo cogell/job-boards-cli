@@ -28,6 +28,12 @@ export interface RemoteConfig {
   terms: string[];
 }
 
+export interface LocationConfig {
+  allowRemote: boolean;
+  allowUnlisted: boolean;
+  include: string[];
+}
+
 export interface BoardOverride {
   name?: string;
   sitemapUrl?: string;
@@ -48,12 +54,18 @@ interface UserConfig {
   };
   boards?: Record<string, BoardOverride>;
   remote?: { terms?: string[] };
+  location?: {
+    allowRemote?: boolean;
+    allowUnlisted?: boolean;
+    include?: string[];
+  };
 }
 
 /** Fully resolved config ready for use */
 export interface ResolvedConfig {
   scoring: ScoringConfig;
   remote: RemoteConfig;
+  location: LocationConfig | null;
   minSalary: number;
   includeUnlistedSalary: boolean;
   boardOverrides: Record<string, BoardOverride>;
@@ -101,6 +113,7 @@ export function loadConfig(configPath?: string): ResolvedConfig {
     return {
       scoring: { ...SCORING_DEFAULTS },
       remote: { ...REMOTE_DEFAULTS },
+      location: null,
       minSalary: 0,
       includeUnlistedSalary: true,
       boardOverrides: {},
@@ -142,9 +155,21 @@ export function loadConfig(configPath?: string): ResolvedConfig {
       : [...REMOTE_DEFAULTS.terms],
   };
 
+  // Resolve location (null if not configured — falls back to --remote flag)
+  const location: LocationConfig | null = user.location
+    ? {
+        allowRemote: user.location.allowRemote ?? true,
+        allowUnlisted: user.location.allowUnlisted ?? true,
+        include: user.location.include
+          ? user.location.include.map((t) => t.toLowerCase())
+          : [],
+      }
+    : null;
+
   return {
     scoring,
     remote,
+    location,
     minSalary: user.minSalary || 0,
     includeUnlistedSalary: user.includeUnlistedSalary ?? true,
     boardOverrides: user.boards || {},
@@ -269,6 +294,17 @@ export function generateInitConfig(outputPath: string) {
 #   terms:
 #     - "remote"
 #     - "telecommute"
+
+# Location filter — when set, replaces the --remote flag with fine-grained control.
+# Jobs must match at least one criterion to be included.
+# location:
+#   allowRemote: true        # Include remote jobs (detected via remote.terms)
+#   allowUnlisted: true      # Include jobs with no specified location
+#   include:                 # Include jobs whose location contains any of these (case-insensitive)
+#     - "New York"
+#     - "NYC"
+#     - "Brooklyn"
+#     - "San Francisco"
 `;
 
   writeFileSync(outputPath, starter, "utf-8");
@@ -296,11 +332,12 @@ export function showResolvedConfig(config: ResolvedConfig) {
     console.log("# No config file found — using built-in defaults\n");
   }
 
-  const display = {
+  const display: Record<string, unknown> = {
     minSalary: config.minSalary || "(disabled)",
     includeUnlistedSalary: config.includeUnlistedSalary,
     scoring: config.scoring,
     remote: config.remote,
+    ...(config.location ? { location: config.location } : {}),
     boardOverrides: Object.keys(config.boardOverrides).length > 0
       ? config.boardOverrides
       : "(none)",

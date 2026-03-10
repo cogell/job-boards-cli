@@ -87,7 +87,15 @@ async function main() {
   if (config.configPath) console.log(`  Config: ${config.configPath}`);
   console.log(`  Boards: ${selectedBoards.join(", ")}`);
   console.log(`  Days back: ${args.days}`);
-  console.log(`  Remote only: ${args.remote}`);
+  if (config.location) {
+    const parts: string[] = [];
+    if (config.location.allowRemote) parts.push("remote");
+    if (config.location.allowUnlisted) parts.push("unlisted");
+    if (config.location.include.length > 0) parts.push(...config.location.include);
+    console.log(`  Location: ${parts.join(", ")}`);
+  } else {
+    console.log(`  Remote only: ${args.remote}`);
+  }
   console.log(`  Min score: ${args.minScore}`);
   console.log(`  Min salary: ${minSalary > 0 ? `$${minSalary.toLocaleString()}/yr` : "(disabled)"}${minSalary > 0 ? ` (unlisted: ${includeUnlistedSalary ? "include" : "exclude"})` : ""}`);
   console.log(`  Max results: ${args.limit}\n`);

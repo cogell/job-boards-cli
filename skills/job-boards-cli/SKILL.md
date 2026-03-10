@@ -41,13 +41,29 @@ npx job-boards-cli --verbose  # show score breakdowns
 3. Use `extends: defaults` to merge with built-ins, or omit to replace entirely
 4. Run `npx job-boards-cli --show-config` to verify the resolved config
 
+### Location filtering
+
+Add a `location` section to your config to filter jobs by geography. When present, this replaces the `--remote` flag:
+
+```yaml
+location:
+  allowRemote: true       # Include remote jobs (detected via remote.terms)
+  allowUnlisted: true     # Include jobs with no specified location
+  include:                # Include jobs whose location contains any of these (case-insensitive)
+    - "New York"
+    - "NYC"
+    - "Brooklyn"
+```
+
+Jobs must match at least one criterion (remote, unlisted, or an include term) to pass.
+
 ### CLI flags
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--board <name>` | `all` | Board(s) to search (comma-separated or `all`) |
 | `--days <n>` | `7` | Days back to look in sitemap |
-| `--remote <bool>` | `true` | Remote-only filter |
+| `--remote <bool>` | `true` | Remote-only filter (ignored when `location` config is set) |
 | `--limit <n>` | `50` | Max results |
 | `--min-score <n>` | `30` | Minimum relevance score |
 | `--min-salary <n>` | `0` | Minimum annual salary floor (0 = disabled) |

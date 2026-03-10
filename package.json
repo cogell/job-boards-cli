@@ -1,6 +1,6 @@
 {
   "name": "job-boards-cli",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Search job boards with configurable keyword scoring via sitemap + JSON-LD scraping",
   "type": "module",
   "bin": {
@@ -27,7 +27,7 @@
   "license": "ISC",
   "packageManager": "pnpm@10.31.0",
   "dependencies": {
-    "fast-xml-parser": "^5.4.2",
+    "fast-xml-parser": "5.4.2",
     "yaml": "^2.8.2"
   },
   "devDependencies": {

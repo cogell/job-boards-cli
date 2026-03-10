@@ -9,7 +9,7 @@ importers:
   .:
     dependencies:
       fast-xml-parser:
-        specifier: ^5.4.2
+        specifier: 5.4.2
         version: 5.4.2
       yaml:
         specifier: ^2.8.2

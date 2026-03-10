@@ -26,6 +26,8 @@ function parseArgs() {
     remote: flags.remote !== "false",
     limit: parseInt(flags.limit || "50", 10),
     minScore: parseInt(flags["min-score"] || "30", 10),
+    minSalary: flags["min-salary"] ? parseInt(flags["min-salary"], 10) : undefined,
+    includeUnlistedSalary: flags["include-unlisted-salary"] !== undefined ? flags["include-unlisted-salary"] !== "false" : undefined,
     verbose: flags.verbose === "true",
     configPath: flags.config,
     init: flags.init === "true",
@@ -76,6 +78,10 @@ async function main() {
     }
   }
 
+  // Resolve salary options: CLI flags override config
+  const minSalary = args.minSalary ?? config.minSalary;
+  const includeUnlistedSalary = args.includeUnlistedSalary ?? config.includeUnlistedSalary;
+
   console.log(`\n  Job Boards CLI`);
   console.log(`  ---------------`);
   if (config.configPath) console.log(`  Config: ${config.configPath}`);
@@ -83,6 +89,7 @@ async function main() {
   console.log(`  Days back: ${args.days}`);
   console.log(`  Remote only: ${args.remote}`);
   console.log(`  Min score: ${args.minScore}`);
+  console.log(`  Min salary: ${minSalary > 0 ? `$${minSalary.toLocaleString()}/yr` : "(disabled)"}${minSalary > 0 ? ` (unlisted: ${includeUnlistedSalary ? "include" : "exclude"})` : ""}`);
   console.log(`  Max results: ${args.limit}\n`);
 
   const allJobs: ScoredJob[] = [];
@@ -90,7 +97,7 @@ async function main() {
   for (const boardName of selectedBoards) {
     const board = resolvedBoardMap[boardName];
     const entries = await fetchSitemap(board, args.days);
-    const jobs = await fetchJobDetails(board, entries, args.remote, args.limit, args.minScore, args.verbose, config);
+    const jobs = await fetchJobDetails(board, entries, args.remote, args.limit, args.minScore, minSalary, includeUnlistedSalary, args.verbose, config);
     allJobs.push(...jobs);
   }
 

@@ -37,6 +37,8 @@ export interface BoardOverride {
 /** What the user writes in their YAML config file */
 interface UserConfig {
   extends?: "defaults";
+  minSalary?: number;
+  includeUnlistedSalary?: boolean;
   scoring?: {
     weights?: Partial<ScoringWeights>;
     titleStrong?: string[];
@@ -52,6 +54,8 @@ interface UserConfig {
 export interface ResolvedConfig {
   scoring: ScoringConfig;
   remote: RemoteConfig;
+  minSalary: number;
+  includeUnlistedSalary: boolean;
   boardOverrides: Record<string, BoardOverride>;
   shouldExtend: boolean;
   configPath: string | null;
@@ -97,6 +101,8 @@ export function loadConfig(configPath?: string): ResolvedConfig {
     return {
       scoring: { ...SCORING_DEFAULTS },
       remote: { ...REMOTE_DEFAULTS },
+      minSalary: 0,
+      includeUnlistedSalary: true,
       boardOverrides: {},
       shouldExtend: false,
       configPath: null,
@@ -139,6 +145,8 @@ export function loadConfig(configPath?: string): ResolvedConfig {
   return {
     scoring,
     remote,
+    minSalary: user.minSalary || 0,
+    includeUnlistedSalary: user.includeUnlistedSalary ?? true,
     boardOverrides: user.boards || {},
     shouldExtend: ext,
     configPath: filePath,
@@ -202,6 +210,14 @@ export function generateInitConfig(outputPath: string) {
 # Set to "defaults" to merge your values WITH the built-in keywords.
 # Omit to replace defaults entirely for each section you provide.
 # extends: defaults
+
+# Minimum annual salary floor — jobs listing below this are excluded.
+# Hourly/weekly/monthly salaries are normalized to annual for comparison.
+# Set to 0 or omit to disable.
+# minSalary: 100000
+
+# When minSalary is active, include jobs that don't list a salary? (default: true)
+# includeUnlistedSalary: true
 
 # Scoring rules — controls how jobs are ranked
 # scoring:
@@ -281,6 +297,8 @@ export function showResolvedConfig(config: ResolvedConfig) {
   }
 
   const display = {
+    minSalary: config.minSalary || "(disabled)",
+    includeUnlistedSalary: config.includeUnlistedSalary,
     scoring: config.scoring,
     remote: config.remote,
     boardOverrides: Object.keys(config.boardOverrides).length > 0

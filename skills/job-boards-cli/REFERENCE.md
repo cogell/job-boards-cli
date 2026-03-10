@@ -67,6 +67,13 @@ boards:
     slugHints:
       - "/jobs/"
 
+# Minimum annual salary floor (0 or omit to disable).
+# Hourly/weekly/monthly salaries are normalized to annual.
+minSalary: 100000
+
+# Include jobs with no listed salary when minSalary is active? (default: true)
+includeUnlistedSalary: true
+
 # Terms used to detect remote positions
 remote:
   terms:
@@ -103,7 +110,7 @@ Run `--show-defaults` to see the full built-in keyword lists.
 3. Pre-filters by URL slug hints (configurable per board)
 4. Fetches each job page and extracts `<script type="application/ld+json">` (schema.org/JobPosting)
 5. Scores each job using the configurable keyword system
-6. Filters by score threshold and remote status
+6. Filters by score threshold, salary floor, and remote status
 7. Deduplicates across boards by title+org (keeps highest score)
 8. Displays sorted results
 

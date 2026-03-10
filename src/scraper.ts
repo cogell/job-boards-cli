@@ -61,15 +61,26 @@ function extractJsonLd(html: string): any | null {
   return null;
 }
 
+function normalizeToAnnual(value: number, unitText?: string): number {
+  const unit = (unitText || "year").toLowerCase();
+  if (unit === "hour") return value * 2080;
+  if (unit === "month") return value * 12;
+  if (unit === "week") return value * 52;
+  return value; // assume annual
+}
+
 function parseJobFields(jsonLd: any, pageUrl: string): JobFields {
   const salary = jsonLd.baseSalary;
   let salaryStr = "Not listed";
+  let salaryMin: number | null = null;
   if (salary?.value) {
     const v = salary.value;
     if (v.minValue && v.maxValue) {
       salaryStr = `$${v.minValue}-$${v.maxValue}/${v.unitText?.toLowerCase() || "year"}`;
+      salaryMin = normalizeToAnnual(Number(v.minValue), v.unitText);
     } else if (v.value) {
       salaryStr = `$${v.value}/${v.unitText?.toLowerCase() || "year"}`;
+      salaryMin = normalizeToAnnual(Number(v.value), v.unitText);
     }
   }
 
@@ -97,6 +108,7 @@ function parseJobFields(jsonLd: any, pageUrl: string): JobFields {
     location: locationStr,
     locationType: locationType || "On-site",
     salary: salaryStr,
+    salaryMin,
     employmentType: jsonLd.employmentType || "Not specified",
     datePosted: jsonLd.datePosted?.split("T")[0] || "Unknown",
     validThrough: jsonLd.validThrough?.split("T")[0] || "Unknown",
@@ -113,6 +125,8 @@ export async function fetchJobDetails(
   remoteOnly: boolean,
   limit: number,
   minScore: number,
+  minSalary: number,
+  includeUnlistedSalary: boolean,
   verbose: boolean,
   config: ResolvedConfig,
 ): Promise<ScoredJob[]> {
@@ -120,6 +134,7 @@ export async function fetchJobDetails(
   let fetched = 0;
   let excluded = 0;
   let belowThreshold = 0;
+  let belowSalary = 0;
   let skippedRemote = 0;
   let errors = 0;
 
@@ -156,6 +171,12 @@ export async function fetchJobDetails(
           return null;
         }
 
+        if (minSalary > 0 && (fields.salaryMin !== null ? fields.salaryMin < minSalary : !includeUnlistedSalary)) {
+          belowSalary++;
+          if (verbose) console.log(`\n  [${board.name}][SAL] ${fields.title} — ${fields.salary}`);
+          return null;
+        }
+
         if (remoteOnly && !isRemote(fields, config)) {
           skippedRemote++;
           return null;
@@ -175,7 +196,7 @@ export async function fetchJobDetails(
 
     const pct = Math.round((fetched / preFiltered.length) * 100);
     process.stdout.write(
-      `\r  [${board.name}] Fetched: ${fetched}/${preFiltered.length} (${pct}%) | Matches: ${results.length} | Excluded: ${excluded} | Low: ${belowThreshold} | No-remote: ${skippedRemote} | Err: ${errors}`,
+      `\r  [${board.name}] Fetched: ${fetched}/${preFiltered.length} (${pct}%) | Matches: ${results.length} | Excluded: ${excluded} | Low: ${belowThreshold}${minSalary > 0 ? ` | Salary: ${belowSalary}` : ""} | No-remote: ${skippedRemote} | Err: ${errors}`,
     );
 
     if (i + CONCURRENCY < preFiltered.length) await sleep(REQUEST_DELAY_MS);

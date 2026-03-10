@@ -50,6 +50,8 @@ npx job-boards-cli --verbose  # show score breakdowns
 | `--remote <bool>` | `true` | Remote-only filter |
 | `--limit <n>` | `50` | Max results |
 | `--min-score <n>` | `30` | Minimum relevance score |
+| `--min-salary <n>` | `0` | Minimum annual salary floor (0 = disabled) |
+| `--include-unlisted-salary <bool>` | `true` | Include jobs with no listed salary when salary floor is active |
 | `--verbose` | `false` | Show score breakdowns |
 | `--config <path>` | *(auto)* | Path to YAML config file |
 | `--init` | — | Generate starter config |

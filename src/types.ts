@@ -9,6 +9,7 @@ export interface JobFields {
   location: string;
   locationType: string;
   salary: string;
+  salaryMin: number | null;
   employmentType: string;
   datePosted: string;
   validThrough: string;

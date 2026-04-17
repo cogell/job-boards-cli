@@ -1,6 +1,7 @@
-import type { BoardConfig } from "../types.js";
+import type { SitemapBoardConfig } from "../types.js";
 
-export const techjobsforgood: BoardConfig = {
+export const techjobsforgood: SitemapBoardConfig = {
+  type: "sitemap",
   name: "Tech Jobs for Good",
   sitemapUrl: "https://techjobsforgood.com/sitemap.xml",
   // TJFG is already a tech-focused board, so all job URLs are relevant.

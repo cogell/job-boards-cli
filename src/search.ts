@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { boards as builtInBoards } from "./boards/index.js";
-import { fetchSitemap, fetchJobDetails } from "./scraper.js";
+import { fetchBoardJobs } from "./scraper.js";
 import { displayResults } from "./display.js";
 import { loadConfig, resolveBoards, generateInitConfig, showDefaults, showResolvedConfig } from "./config.js";
 import type { ScoredJob } from "./types.js";
@@ -96,6 +96,7 @@ async function main() {
   } else {
     console.log(`  Remote only: ${args.remote}`);
   }
+  console.log(`  Hybrid: ${config.hybrid.action} (penalty: -${config.hybrid.penalty}pts)`);
   console.log(`  Min score: ${args.minScore}`);
   console.log(`  Min salary: ${minSalary > 0 ? `$${minSalary.toLocaleString()}/yr` : "(disabled)"}${minSalary > 0 ? ` (unlisted: ${includeUnlistedSalary ? "include" : "exclude"})` : ""}`);
   console.log(`  Max results: ${args.limit}\n`);
@@ -104,8 +105,7 @@ async function main() {
 
   for (const boardName of selectedBoards) {
     const board = resolvedBoardMap[boardName];
-    const entries = await fetchSitemap(board, args.days);
-    const jobs = await fetchJobDetails(board, entries, args.remote, args.limit, args.minScore, minSalary, includeUnlistedSalary, args.verbose, config);
+    const jobs = await fetchBoardJobs(board, args.days, args.remote, args.limit, args.minScore, minSalary, includeUnlistedSalary, args.verbose, config);
     allJobs.push(...jobs);
   }
 

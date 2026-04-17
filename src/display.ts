@@ -15,7 +15,7 @@ export function displayResults(jobs: ScoredJob[], verbose: boolean) {
     console.log(`  [${scoreBar}] ${job.score}pts  (${job.source})`);
     console.log(`  ${job.title}`);
     console.log(`  ${job.org}`);
-    console.log(`  \u{1F4CD} ${job.location} | ${job.locationType}`);
+    console.log(`  \u{1F4CD} ${job.location} | ${job.locationType}${job.hybridWarning ? ` \u26A0\uFE0F  HYBRID (${job.hybridWarning})` : ""}`);
     console.log(`  \u{1F4B0} ${job.salary} | ${job.employmentType}`);
     console.log(`  \u{1F4C5} Posted: ${job.datePosted} | Expires: ${job.validThrough}`);
     console.log(`  \u{1F517} ${job.url}`);

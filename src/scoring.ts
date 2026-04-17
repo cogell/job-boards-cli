@@ -1,4 +1,4 @@
-import type { ResolvedConfig } from "./config.js";
+import type { ResolvedConfig } from "./types.js";
 
 // Word-boundary match — prevents "cto" matching inside "director"
 function matchesWord(text: string, keyword: string): boolean {
@@ -7,9 +7,9 @@ function matchesWord(text: string, keyword: string): boolean {
 }
 
 export function scoreJob(
-  job: { title: string; description: string },
+  job: { title: string; description: string; locationType?: string },
   config: ResolvedConfig,
-): { score: number; breakdown: string } {
+): { score: number; breakdown: string; hybridWarning?: string } {
   const { scoring } = config;
   const titleLower = job.title.toLowerCase();
   const descLower = job.description.toLowerCase();
@@ -56,6 +56,18 @@ export function scoreJob(
   if (score < scoring.weights.highSignalScoreCeiling && descHits >= scoring.weights.highSignalThreshold) {
     score += scoring.weights.highSignalBonus;
     reasons.push(`desc:high_signal_bonus +${scoring.weights.highSignalBonus}`);
+  }
+
+  // Hybrid detection: flag jobs tagged as remote but with hybrid indicators
+  const locType = (job.locationType || "").toLowerCase();
+  const appearsRemote = config.remote.terms.some((t) => locType.includes(t));
+  if (appearsRemote) {
+    const matchedHybrid = config.hybrid.terms.filter((t) => descLower.includes(t));
+    if (matchedHybrid.length > 0) {
+      score -= config.hybrid.penalty;
+      reasons.push(`hybrid:-${config.hybrid.penalty} [${matchedHybrid.join(", ")}]`);
+      return { score, breakdown: reasons.join(" | "), hybridWarning: matchedHybrid.join(", ") };
+    }
   }
 
   return { score, breakdown: reasons.join(" | ") };

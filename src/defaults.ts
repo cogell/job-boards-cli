@@ -48,6 +48,7 @@ export const SCORING_DEFAULTS = {
     "react developer",
     "node developer",
     "python developer",
+    "application engineer",
   ],
 
   // Title keywords that are relevant but weaker (could be tech-adjacent)
@@ -154,9 +155,26 @@ export const SCORING_DEFAULTS = {
     "membership assistant",
     "carbon management",
     "artistic operations",
+    "intern",
   ],
 };
 
 export const REMOTE_DEFAULTS = {
   terms: ["remote", "telecommute"],
+};
+
+export const HYBRID_DEFAULTS = {
+  terms: [
+    "hybrid",
+    "in-office",
+    "days a week in",
+    "days per week in",
+    "days in the office",
+    "come into the office",
+    "report to the office",
+    "onsite days",
+    "on-site days",
+  ],
+  penalty: 20,
+  action: "flag" as const,
 };

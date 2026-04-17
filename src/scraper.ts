@@ -1,6 +1,5 @@
 import { XMLParser } from "fast-xml-parser";
-import type { BoardConfig, SitemapEntry, JobFields, ScoredJob } from "./types.js";
-import type { ResolvedConfig } from "./config.js";
+import type { BoardConfig, SitemapBoardConfig, GreenhouseBoardConfig, RssBoardConfig, SitemapEntry, JobFields, ScoredJob, ResolvedConfig } from "./types.js";
 import { scoreJob, passesLocationFilter } from "./scoring.js";
 
 const CONCURRENCY = 5;
@@ -20,7 +19,7 @@ function sleep(ms: number) {
 
 // --- Sitemap parsing ---
 
-export async function fetchSitemap(board: BoardConfig, daysBack: number): Promise<SitemapEntry[]> {
+export async function fetchSitemap(board: SitemapBoardConfig, daysBack: number): Promise<SitemapEntry[]> {
   console.log(`  [${board.name}] Fetching sitemap...`);
   const xml = await fetchText(board.sitemapUrl);
   const parser = new XMLParser();
@@ -120,7 +119,7 @@ function parseJobFields(jsonLd: any, pageUrl: string): JobFields {
 // --- Batch fetch with concurrency ---
 
 export async function fetchJobDetails(
-  board: BoardConfig,
+  board: SitemapBoardConfig,
   entries: SitemapEntry[],
   remoteOnly: boolean,
   limit: number,
@@ -157,7 +156,7 @@ export async function fetchJobDetails(
         if (!jsonLd) return null;
 
         const fields = parseJobFields(jsonLd, entry.url);
-        const { score, breakdown } = scoreJob(fields, config);
+        const { score, breakdown, hybridWarning } = scoreJob(fields, config);
 
         if (score < 0) {
           excluded++;
@@ -177,12 +176,18 @@ export async function fetchJobDetails(
           return null;
         }
 
+        if (hybridWarning && config.hybrid.action === "exclude") {
+          skippedRemote++;
+          if (verbose) console.log(`\n  [${board.name}][HYB] ${fields.title} — ${hybridWarning}`);
+          return null;
+        }
+
         if (!passesLocationFilter(fields, remoteOnly, config)) {
           skippedRemote++;
           return null;
         }
 
-        return { ...fields, source: board.name, score, scoreBreakdown: breakdown } as ScoredJob;
+        return { ...fields, source: board.name, score, scoreBreakdown: breakdown, hybridWarning } as ScoredJob;
       } catch {
         errors++;
         return null;
@@ -204,4 +209,268 @@ export async function fetchJobDetails(
 
   console.log("\n");
   return results;
+}
+
+// --- Greenhouse API ---
+
+function parseGreenhouseJob(job: any, boardName: string): JobFields {
+  const locationName = job.location?.name || "";
+  const isRemote = locationName.toLowerCase().includes("remote");
+
+  const plainDesc = (job.content || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ");
+
+  return {
+    title: job.title || "Untitled",
+    org: boardName,
+    location: locationName || "Not specified",
+    locationType: isRemote ? "TELECOMMUTE" : "On-site",
+    salary: "Not listed",
+    salaryMin: null,
+    employmentType: "Not specified",
+    datePosted: job.updated_at ? job.updated_at.split("T")[0] : "Unknown",
+    validThrough: "Unknown",
+    url: job.absolute_url || "",
+    description: plainDesc,
+  };
+}
+
+async function fetchGreenhouseJobs(
+  board: GreenhouseBoardConfig,
+  daysBack: number,
+  remoteOnly: boolean,
+  limit: number,
+  minScore: number,
+  minSalary: number,
+  includeUnlistedSalary: boolean,
+  verbose: boolean,
+  config: ResolvedConfig,
+): Promise<ScoredJob[]> {
+  const apiUrl = `https://boards-api.greenhouse.io/v1/boards/${board.boardId}/jobs?content=true`;
+  console.log(`  [${board.name}] Fetching Greenhouse API...`);
+
+  const res = await fetch(apiUrl);
+  if (!res.ok) throw new Error(`${res.status} fetching ${apiUrl}`);
+  const data = await res.json();
+  const allJobs: any[] = data.jobs || [];
+
+  // Date filter
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - daysBack);
+
+  const recent = allJobs.filter((j) => {
+    if (!j.updated_at) return false;
+    return new Date(j.updated_at) >= cutoff;
+  });
+
+  console.log(`  [${board.name}] ${recent.length} jobs updated in last ${daysBack} days (of ${allJobs.length} total)`);
+
+  const results: ScoredJob[] = [];
+  let excluded = 0;
+  let belowThreshold = 0;
+  let belowSalary = 0;
+  let skippedLocation = 0;
+
+  for (const job of recent) {
+    if (results.length >= limit) break;
+
+    const fields = parseGreenhouseJob(job, board.name);
+    const { score, breakdown, hybridWarning } = scoreJob(fields, config);
+
+    if (score < 0) {
+      excluded++;
+      if (verbose) console.log(`\n  [${board.name}][EXCL] ${fields.title} — ${breakdown}`);
+      continue;
+    }
+
+    if (score < minScore) {
+      belowThreshold++;
+      if (verbose) console.log(`\n  [${board.name}][LOW ${score}] ${fields.title} — ${breakdown}`);
+      continue;
+    }
+
+    if (minSalary > 0 && !includeUnlistedSalary) {
+      belowSalary++;
+      if (verbose) console.log(`\n  [${board.name}][SAL] ${fields.title} — ${fields.salary}`);
+      continue;
+    }
+
+    if (hybridWarning && config.hybrid.action === "exclude") {
+      skippedLocation++;
+      if (verbose) console.log(`\n  [${board.name}][HYB] ${fields.title} — ${hybridWarning}`);
+      continue;
+    }
+
+    if (!passesLocationFilter(fields, remoteOnly, config)) {
+      skippedLocation++;
+      continue;
+    }
+
+    results.push({ ...fields, source: board.name, score, scoreBreakdown: breakdown, hybridWarning });
+  }
+
+  console.log(`  [${board.name}] Matches: ${results.length} | Excluded: ${excluded} | Low: ${belowThreshold}${minSalary > 0 ? ` | Salary: ${belowSalary}` : ""} | Location: ${skippedLocation}\n`);
+  return results;
+}
+
+// --- RSS feed parsing ---
+
+function parseRssItem(item: any, boardName: string): JobFields {
+  const rawTitle: string = item.title || "Untitled";
+  const colonIdx = rawTitle.indexOf(": ");
+  const org = colonIdx >= 0 ? rawTitle.slice(0, colonIdx) : "Unknown";
+  const title = colonIdx >= 0 ? rawTitle.slice(colonIdx + 2) : rawTitle;
+
+  const plainDesc = (item.description || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+
+  let datePosted = "Unknown";
+  if (item.pubDate) {
+    const d = new Date(item.pubDate);
+    if (!isNaN(d.getTime())) {
+      datePosted = d.toISOString().split("T")[0];
+    }
+  }
+
+  return {
+    title,
+    org,
+    location: item.region || "Not specified",
+    locationType: "TELECOMMUTE",
+    salary: "Not listed",
+    salaryMin: null,
+    employmentType: "Not specified",
+    datePosted,
+    validThrough: "Unknown",
+    url: item.link || item.guid || "",
+    description: plainDesc,
+  };
+}
+
+async function fetchRssJobs(
+  board: RssBoardConfig,
+  daysBack: number,
+  remoteOnly: boolean,
+  limit: number,
+  minScore: number,
+  minSalary: number,
+  includeUnlistedSalary: boolean,
+  verbose: boolean,
+  config: ResolvedConfig,
+): Promise<ScoredJob[]> {
+  console.log(`  [${board.name}] Fetching ${board.feedUrls.length} RSS feeds...`);
+
+  const parser = new XMLParser();
+  const feedResults = await Promise.all(
+    board.feedUrls.map(async (url) => {
+      try {
+        const xml = await fetchText(url);
+        const parsed = parser.parse(xml);
+        const items = parsed?.rss?.channel?.item;
+        if (!items) return [];
+        return Array.isArray(items) ? items : [items];
+      } catch (err) {
+        console.error(`  [${board.name}] Error fetching ${url}: ${err}`);
+        return [];
+      }
+    }),
+  );
+
+  // Flatten and deduplicate by guid
+  const seen = new Set<string>();
+  const allItems: any[] = [];
+  for (const items of feedResults) {
+    for (const item of items) {
+      const id = item.guid || item.link || item.title;
+      if (!seen.has(id)) {
+        seen.add(id);
+        allItems.push(item);
+      }
+    }
+  }
+
+  // Date filter
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - daysBack);
+
+  const recent = allItems.filter((item) => {
+    if (!item.pubDate) return false;
+    return new Date(item.pubDate) >= cutoff;
+  });
+
+  console.log(`  [${board.name}] ${recent.length} jobs in last ${daysBack} days (of ${allItems.length} unique across feeds)`);
+
+  const results: ScoredJob[] = [];
+  let excluded = 0;
+  let belowThreshold = 0;
+  let belowSalary = 0;
+  let skippedLocation = 0;
+
+  for (const item of recent) {
+    if (results.length >= limit) break;
+
+    const fields = parseRssItem(item, board.name);
+    const { score, breakdown, hybridWarning } = scoreJob(fields, config);
+
+    if (score < 0) {
+      excluded++;
+      if (verbose) console.log(`\n  [${board.name}][EXCL] ${fields.title} — ${breakdown}`);
+      continue;
+    }
+
+    if (score < minScore) {
+      belowThreshold++;
+      if (verbose) console.log(`\n  [${board.name}][LOW ${score}] ${fields.title} — ${breakdown}`);
+      continue;
+    }
+
+    if (minSalary > 0 && !includeUnlistedSalary) {
+      belowSalary++;
+      if (verbose) console.log(`\n  [${board.name}][SAL] ${fields.title} — ${fields.salary}`);
+      continue;
+    }
+
+    if (hybridWarning && config.hybrid.action === "exclude") {
+      skippedLocation++;
+      if (verbose) console.log(`\n  [${board.name}][HYB] ${fields.title} — ${hybridWarning}`);
+      continue;
+    }
+
+    if (!passesLocationFilter(fields, remoteOnly, config)) {
+      skippedLocation++;
+      continue;
+    }
+
+    results.push({ ...fields, source: board.name, score, scoreBreakdown: breakdown, hybridWarning });
+  }
+
+  console.log(`  [${board.name}] Matches: ${results.length} | Excluded: ${excluded} | Low: ${belowThreshold}${minSalary > 0 ? ` | Salary: ${belowSalary}` : ""} | Location: ${skippedLocation}\n`);
+  return results;
+}
+
+// --- Dispatch ---
+
+export async function fetchBoardJobs(
+  board: BoardConfig,
+  daysBack: number,
+  remoteOnly: boolean,
+  limit: number,
+  minScore: number,
+  minSalary: number,
+  includeUnlistedSalary: boolean,
+  verbose: boolean,
+  config: ResolvedConfig,
+): Promise<ScoredJob[]> {
+  switch (board.type) {
+    case "sitemap": {
+      const entries = await fetchSitemap(board, daysBack);
+      return fetchJobDetails(board, entries, remoteOnly, limit, minScore, minSalary, includeUnlistedSalary, verbose, config);
+    }
+    case "greenhouse":
+      return fetchGreenhouseJobs(board, daysBack, remoteOnly, limit, minScore, minSalary, includeUnlistedSalary, verbose, config);
+    case "rss":
+      return fetchRssJobs(board, daysBack, remoteOnly, limit, minScore, minSalary, includeUnlistedSalary, verbose, config);
+    default: {
+      const _exhaustive: never = board;
+      throw new Error(`Unknown board type: ${(_exhaustive as any).type}`);
+    }
+  }
 }

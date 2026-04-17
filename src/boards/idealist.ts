@@ -1,6 +1,7 @@
-import type { BoardConfig } from "../types.js";
+import type { SitemapBoardConfig } from "../types.js";
 
-export const idealist: BoardConfig = {
+export const idealist: SitemapBoardConfig = {
+  type: "sitemap",
   name: "Idealist",
   sitemapUrl: "https://www.idealist.org/sitemap-jobs-en-1.xml",
   slugHints: [

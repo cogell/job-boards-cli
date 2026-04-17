@@ -2,43 +2,27 @@ import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { stringify as toYaml, parse as parseYaml } from "yaml";
-import { SCORING_DEFAULTS, REMOTE_DEFAULTS } from "./defaults.js";
-import type { BoardConfig } from "./types.js";
+import { SCORING_DEFAULTS, REMOTE_DEFAULTS, HYBRID_DEFAULTS } from "./defaults.js";
+import type {
+  BoardConfig,
+  BoardOverride,
+  HybridConfig,
+  LocationConfig,
+  RemoteConfig,
+  ResolvedConfig,
+  ScoringConfig,
+  ScoringWeights,
+} from "./types.js";
 
-// --- Config types ---
-
-export interface ScoringWeights {
-  titleStrong: number;
-  titleModerate: number;
-  descriptionSignal: number;
-  highSignalBonus: number;
-  highSignalThreshold: number;
-  highSignalScoreCeiling: number;
-}
-
-export interface ScoringConfig {
-  weights: ScoringWeights;
-  titleStrong: string[];
-  titleModerate: string[];
-  descriptionSignals: string[];
-  exclusions: string[];
-}
-
-export interface RemoteConfig {
-  terms: string[];
-}
-
-export interface LocationConfig {
-  allowRemote: boolean;
-  allowUnlisted: boolean;
-  include: string[];
-}
-
-export interface BoardOverride {
-  name?: string;
-  sitemapUrl?: string;
-  slugHints?: string[];
-}
+export type {
+  BoardOverride,
+  HybridConfig,
+  LocationConfig,
+  RemoteConfig,
+  ResolvedConfig,
+  ScoringConfig,
+  ScoringWeights,
+};
 
 /** What the user writes in their YAML config file */
 interface UserConfig {
@@ -59,18 +43,11 @@ interface UserConfig {
     allowUnlisted?: boolean;
     include?: string[];
   };
-}
-
-/** Fully resolved config ready for use */
-export interface ResolvedConfig {
-  scoring: ScoringConfig;
-  remote: RemoteConfig;
-  location: LocationConfig | null;
-  minSalary: number;
-  includeUnlistedSalary: boolean;
-  boardOverrides: Record<string, BoardOverride>;
-  shouldExtend: boolean;
-  configPath: string | null;
+  hybrid?: {
+    terms?: string[];
+    penalty?: number;
+    action?: "flag" | "exclude";
+  };
 }
 
 // --- Config file discovery ---
@@ -114,6 +91,7 @@ export function loadConfig(configPath?: string): ResolvedConfig {
       scoring: { ...SCORING_DEFAULTS },
       remote: { ...REMOTE_DEFAULTS },
       location: null,
+      hybrid: { ...HYBRID_DEFAULTS },
       minSalary: 0,
       includeUnlistedSalary: true,
       boardOverrides: {},
@@ -166,10 +144,20 @@ export function loadConfig(configPath?: string): ResolvedConfig {
       }
     : null;
 
+  // Resolve hybrid detection
+  const hybrid: HybridConfig = {
+    terms: user.hybrid?.terms
+      ? ext ? mergeArrays(HYBRID_DEFAULTS.terms, user.hybrid.terms) : user.hybrid.terms
+      : [...HYBRID_DEFAULTS.terms],
+    penalty: user.hybrid?.penalty ?? HYBRID_DEFAULTS.penalty,
+    action: user.hybrid?.action ?? HYBRID_DEFAULTS.action,
+  };
+
   return {
     scoring,
     remote,
     location,
+    hybrid,
     minSalary: user.minSalary || 0,
     includeUnlistedSalary: user.includeUnlistedSalary ?? true,
     boardOverrides: user.boards || {},
@@ -196,25 +184,64 @@ export function resolveBoards(
     if (resolved[key]) {
       // Existing board — apply overrides
       if (override.name) resolved[key].name = override.name;
-      if (override.sitemapUrl) resolved[key].sitemapUrl = override.sitemapUrl;
-      if (override.slugHints) {
-        resolved[key].slugHints = config.shouldExtend
-          ? [...new Set([...resolved[key].slugHints, ...override.slugHints])]
-          : override.slugHints;
+      const existing = resolved[key];
+      if (existing.type === "sitemap") {
+        if (override.sitemapUrl) existing.sitemapUrl = override.sitemapUrl;
+        if (override.slugHints) {
+          existing.slugHints = config.shouldExtend
+            ? [...new Set([...existing.slugHints, ...override.slugHints])]
+            : override.slugHints;
+        }
+      } else if (existing.type === "greenhouse") {
+        if (override.boardId) existing.boardId = override.boardId;
+      } else if (existing.type === "rss") {
+        if (override.feedUrls) {
+          existing.feedUrls = config.shouldExtend
+            ? [...new Set([...existing.feedUrls, ...override.feedUrls])]
+            : override.feedUrls;
+        }
       }
     } else {
-      // New board — require all fields
-      if (!override.name || !override.sitemapUrl || !override.slugHints) {
-        console.error(
-          `Board "${key}" in config requires name, sitemapUrl, and slugHints`,
-        );
-        process.exit(1);
+      // New board — dispatch by type
+      const boardType = override.type || "sitemap";
+      if (boardType === "greenhouse") {
+        if (!override.name || !override.boardId) {
+          console.error(
+            `Greenhouse board "${key}" in config requires name and boardId`,
+          );
+          process.exit(1);
+        }
+        resolved[key] = {
+          type: "greenhouse",
+          name: override.name,
+          boardId: override.boardId,
+        };
+      } else if (boardType === "rss") {
+        if (!override.name || !override.feedUrls) {
+          console.error(
+            `RSS board "${key}" in config requires name and feedUrls`,
+          );
+          process.exit(1);
+        }
+        resolved[key] = {
+          type: "rss",
+          name: override.name,
+          feedUrls: override.feedUrls,
+        };
+      } else {
+        if (!override.name || !override.sitemapUrl || !override.slugHints) {
+          console.error(
+            `Board "${key}" in config requires name, sitemapUrl, and slugHints`,
+          );
+          process.exit(1);
+        }
+        resolved[key] = {
+          type: "sitemap",
+          name: override.name,
+          sitemapUrl: override.sitemapUrl,
+          slugHints: override.slugHints,
+        };
       }
-      resolved[key] = {
-        name: override.name,
-        sitemapUrl: override.sitemapUrl,
-        slugHints: override.slugHints,
-      };
     }
   }
 
@@ -295,6 +322,15 @@ export function generateInitConfig(outputPath: string) {
 #     - "remote"
 #     - "telecommute"
 
+# Hybrid detection — flags or excludes jobs tagged as remote but with hybrid
+# indicators in the description (e.g., "hybrid", "in-office", "days per week in").
+# hybrid:
+#   penalty: 20              # Score deduction when hybrid detected (default: 20)
+#   action: flag             # "flag" (show warning + penalize) or "exclude" (filter out)
+#   terms:                   # Additional detection terms (merged with defaults when extends: defaults)
+#     - "hybrid"
+#     - "in-office"
+
 # Location filter — when set, replaces the --remote flag with fine-grained control.
 # Jobs must match at least one criterion to be included.
 # location:
@@ -338,6 +374,7 @@ export function showResolvedConfig(config: ResolvedConfig) {
     scoring: config.scoring,
     remote: config.remote,
     ...(config.location ? { location: config.location } : {}),
+    hybrid: config.hybrid,
     boardOverrides: Object.keys(config.boardOverrides).length > 0
       ? config.boardOverrides
       : "(none)",

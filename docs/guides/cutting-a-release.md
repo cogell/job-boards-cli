@@ -10,7 +10,7 @@ How to publish a new version of `job-boards-cli` to npm.
 
 ## Versioning
 
-Follow semver against the published surface (CLI flags, config schema, built-in board keys):
+Follow semver against the published surface (CLI flags, config schema, built-in board keys, and the library entry point's exported functions and types):
 
 | Change | Bump |
 |--------|------|
@@ -51,16 +51,22 @@ Edit `version` in `package.json` to match the changelog entry. Do not use `npm v
 pnpm build
 ```
 
-This runs `tsup` and produces `dist/search.js` (the single bundled CLI entry with a `#!/usr/bin/env node` banner). The `files` field in `package.json` ships `dist/` and `skills/` only.
+This runs `tsup` and produces:
+
+- `dist/search.js` — the bundled CLI entry with a `#!/usr/bin/env node` banner (referenced by `bin`)
+- `dist/index.js` + `dist/index.d.ts` — the library entry point for programmatic use (referenced by `main`, `types`, and `exports`)
+
+The `files` field in `package.json` ships `dist/` and `skills/` only.
 
 ### 4. Smoke test the built artifact
 
 ```bash
 node dist/search.js --show-defaults
 node dist/search.js --help 2>/dev/null || node dist/search.js --board idealist --days 1 --limit 1
+node -e "import('./dist/index.js').then(m => console.log(Object.keys(m).sort().join(', ')))"
 ```
 
-Confirm it runs without crashing and the shebang is intact.
+Confirm the CLI runs without crashing (shebang intact) and the library entry exports the expected names (`fetchBoardJobs`, `scoreJob`, `boards`, `SCORING_DEFAULTS`, etc.).
 
 ### 5. Commit
 

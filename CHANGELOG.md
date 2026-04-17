@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.3.0]
+
+### Added
+- Library entry point (`src/index.ts`) for programmatic use alongside the CLI; bundle is platform-neutral and free of `node:fs`/`os`/`path` so it can run on Val Town, Cloudflare Workers, etc.
+  - Exports: `fetchBoardJobs`, `fetchSitemap`, `fetchJobDetails`, `scoreJob`, `isRemote`, `passesLocationFilter`, `boards`, `allBoardNames`, `SCORING_DEFAULTS`, `REMOTE_DEFAULTS`, `HYBRID_DEFAULTS`, plus all types
+  - `package.json` now declares `main`, `types`, and `exports` fields
+- Greenhouse board adapter and Code for America board
+- RSS board adapter and We Work Remotely board
+- Hybrid-detection for jobs tagged remote but with hybrid indicators in the description (configurable terms, penalty, and `flag`/`exclude` action)
+
+### Changed
+- `BoardConfig` is now a discriminated union (`sitemap` | `greenhouse` | `rss`)
+- Config types (`ResolvedConfig`, `ScoringConfig`, etc.) moved to `types.ts` so they can be imported without pulling in filesystem dependencies; still re-exported from `config.ts` for backwards compatibility
+
 ## [1.2.0]
 
 ### Added

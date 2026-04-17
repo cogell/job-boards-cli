@@ -1,6 +1,6 @@
 {
   "name": "job-boards-cli",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Search job boards with configurable keyword scoring via sitemap + JSON-LD scraping",
   "type": "module",
   "bin": {
